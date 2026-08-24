@@ -1,4 +1,4 @@
-﻿"""
+"""
 Customer Churn Prediction Web Application & API Server
 Serves an interactive web dashboard and REST API for real-time churn scoring.
 """
@@ -10,8 +10,8 @@ import os
 import joblib
 import pandas as pd
 
-PORT = 5000
-MODEL_PATH = "models/churn_pipeline.joblib"
+PORT = int(os.environ.get("PORT", 5000))
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "churn_pipeline.joblib") if not os.path.exists("models/churn_pipeline.joblib") else "models/churn_pipeline.joblib"
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
