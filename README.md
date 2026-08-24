@@ -1,10 +1,13 @@
-﻿# Telecom Customer Churn Analysis & Machine Learning Prediction
+# Telecom Customer Churn Analysis & Machine Learning Prediction
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Scikit-Learn](https://img.shields.io/badge/scikit--learn-1.7.2-orange.svg)](https://scikit-learn.org/)
 [![Pandas](https://img.shields.io/badge/pandas-2.3.3-darkblue.svg)](https://pandas.pydata.org/)
 [![MySQL](https://img.shields.io/badge/mysql-8.0-blue.svg)](https://www.mysql.com/)
 [![Tableau](https://img.shields.io/badge/tableau-Dashboard-green.svg)](https://www.tableau.com/)
+[![Live App](https://img.shields.io/badge/Render-Live%20Demo-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://customer-churn-analysis-ih21.onrender.com)
+
+> 🚀 **Live Interactive Demo:** Try the deployed machine learning model and churn prediction dashboard online at **[customer-churn-analysis-ih21.onrender.com](https://customer-churn-analysis-ih21.onrender.com)**
 
 An end-to-end data analytics and machine learning portfolio project identifying churn drivers, quantifying revenue risk, performing rigorous statistical hypothesis testing, executing MySQL business queries, and deploying classification models (Logistic Regression & Random Forest) to predict customer churn in real time.
 
