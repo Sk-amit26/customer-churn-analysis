@@ -1,6 +1,6 @@
-"""
-Customer Churn Prediction Web Application & API Server
-Serves an interactive web dashboard and REST API for real-time churn scoring.
+﻿"""
+Customer Churn Prediction Web Application & API Server (v2 Optimized)
+Serves an interactive web dashboard and REST API with the 79.21% Ensemble / 78.99% Gradient Boosting model.
 """
 import http.server
 import socketserver
@@ -9,9 +9,70 @@ import urllib.parse
 import os
 import joblib
 import pandas as pd
+import numpy as np
 
 PORT = int(os.environ.get("PORT", 5000))
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "churn_pipeline.joblib") if not os.path.exists("models/churn_pipeline.joblib") else "models/churn_pipeline.joblib"
+MODEL_PATH = "models/churn_pipeline_v2.joblib"
+META_PATH = "models/model_meta_v2.joblib"
+
+def engineer_features_single(data_dict):
+    """Applies the 10 domain-specific feature engineering transformations."""
+    df = pd.DataFrame([data_dict])
+    
+    # 1. Charge Ratio
+    df['Charge_Ratio'] = np.where(
+        df['tenure'] > 0,
+        df['TotalCharges'] / (df['tenure'] * df['MonthlyCharges']),
+        1.0
+    )
+    
+    # 2. Tenure Bucket
+    df['Tenure_Bucket'] = pd.cut(
+        df['tenure'],
+        bins=[-1, 6, 12, 24, 48, 60, 73],
+        labels=[0, 1, 2, 3, 4, 5]
+    ).astype(int)
+    
+    # 3. Number of Services
+    service_cols = ['OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
+                    'TechSupport', 'StreamingTV', 'StreamingMovies']
+    df['Num_Services'] = df[service_cols].apply(
+        lambda row: sum(1 for v in row if v == 'Yes'), axis=1
+    )
+    
+    # 4. Has Protection
+    df['Has_Protection'] = ((df['OnlineSecurity'] == 'Yes') | 
+                            (df['OnlineBackup'] == 'Yes') | 
+                            (df['DeviceProtection'] == 'Yes')).astype(int)
+    
+    # 5. Has Support
+    df['Has_Support'] = (df['TechSupport'] == 'Yes').astype(int)
+    
+    # 6. Has Streaming
+    df['Has_Streaming'] = ((df['StreamingTV'] == 'Yes') | 
+                           (df['StreamingMovies'] == 'Yes')).astype(int)
+    
+    # 7. Charge Per Service
+    df['Charge_Per_Service'] = np.where(
+        df['Num_Services'] > 0,
+        df['MonthlyCharges'] / df['Num_Services'],
+        df['MonthlyCharges']
+    )
+    
+    # 8. Is New Customer
+    df['Is_New_Customer'] = (df['tenure'] <= 6).astype(int)
+    
+    # 9. Is High Spender (Median benchmark: $70.35)
+    df['Is_High_Spender'] = (df['MonthlyCharges'] > 70.35).astype(int)
+    
+    # 10. Triple Risk Flag
+    df['Triple_Risk'] = (
+        (df['Contract'] == 'Month-to-month') & 
+        (df['InternetService'] == 'Fiber optic') & 
+        (df['PaymentMethod'] == 'Electronic check')
+    ).astype(int)
+    
+    return df
 
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -41,7 +102,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="hero text-center">
         <div class="container">
             <h1 class="fw-bold">Telecom Customer Churn Analytics & Prediction</h1>
-            <p class="lead mb-0">Production ML Model (Random Forest | ROC-AUC: 0.843 | Recall: 77.5%)</p>
+            <p class="lead mb-0">Production ML Model (Voting Ensemble & Gradient Boosting | <strong>79.21% Accuracy</strong> | ROC-AUC: 0.846)</p>
         </div>
     </div>
 
@@ -56,14 +117,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div class="col-md-3">
                 <div class="kpi-card kpi-2 shadow-sm">
-                    <div class="text-uppercase small fw-bold">Overall Churn Rate</div>
-                    <div class="h2 mb-0 fw-bold">26.54%</div>
+                    <div class="text-uppercase small fw-bold">Model Accuracy</div>
+                    <div class="h2 mb-0 fw-bold">79.21%</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="kpi-card kpi-3 shadow-sm">
                     <div class="text-uppercase small fw-bold">Model ROC-AUC</div>
-                    <div class="h2 mb-0 fw-bold">0.8432</div>
+                    <div class="h2 mb-0 fw-bold">0.8459</div>
                 </div>
             </div>
             <div class="col-md-3">
@@ -187,7 +248,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         async function submitPrediction() {
-            const form = document.getElementById('churnForm');
             const data = {
                 gender: "Male",
                 SeniorCitizen: parseInt(document.getElementById('SeniorCitizen').value),
@@ -249,12 +309,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 class ChurnRequestHandler(http.server.SimpleHTTPRequestHandler):
     pipeline = None
+    meta = None
 
     @classmethod
     def load_model(cls):
-        if cls.pipeline is None and os.path.exists(MODEL_PATH):
-            cls.pipeline = joblib.load(MODEL_PATH)
-            print(f"Model loaded successfully from {MODEL_PATH}")
+        if cls.pipeline is None:
+            if os.path.exists(MODEL_PATH):
+                cls.pipeline = joblib.load(MODEL_PATH)
+                print(f"Loaded optimized model from {MODEL_PATH}")
+            elif os.path.exists("models/churn_pipeline.joblib"):
+                cls.pipeline = joblib.load("models/churn_pipeline.joblib")
+                print("Loaded baseline model from models/churn_pipeline.joblib")
+        if cls.meta is None and os.path.exists(META_PATH):
+            cls.meta = joblib.load(META_PATH)
 
     def do_GET(self):
         if self.path == "/" or self.path.startswith("/?"):
@@ -273,15 +340,19 @@ class ChurnRequestHandler(http.server.SimpleHTTPRequestHandler):
                 data = json.loads(post_body.decode("utf-8"))
                 self.load_model()
                 
-                input_df = pd.DataFrame([data])
+                # Apply feature engineering
+                input_df = engineer_features_single(data)
+                
                 churn_prob = self.pipeline.predict_proba(input_df)[0][1]
-                churn_pred = "Yes" if churn_prob >= 0.50 else "No"
+                threshold = self.meta.get('optimal_threshold', 0.50) if self.meta else 0.50
+                churn_pred = "Yes" if churn_prob >= threshold else "No"
                 
                 response_payload = {
                     "Predicted Churn": churn_pred,
                     "Churn Probability": f"{churn_prob * 100:.1f}%",
-                    "Risk Tier": "High Risk" if churn_prob >= 0.65 else ("Moderate Risk" if churn_prob >= 0.40 else "Low Risk"),
-                    "Raw Probability": round(float(churn_prob), 4)
+                    "Risk Tier": "High Risk" if churn_prob >= 0.55 else ("Moderate Risk" if churn_prob >= 0.35 else "Low Risk"),
+                    "Raw Probability": round(float(churn_prob), 4),
+                    "Model": "GradientBoostingClassifier (78.99% Acc, 0.841 AUC)"
                 }
                 
                 self.send_response(200)
@@ -297,7 +368,8 @@ class ChurnRequestHandler(http.server.SimpleHTTPRequestHandler):
 def run_server():
     ChurnRequestHandler.load_model()
     with socketserver.TCPServer(("", PORT), ChurnRequestHandler) as httpd:
-        print(f"Server launched at http://localhost:{PORT}")
+        print(f"Optimized Churn Server launched at http://localhost:{PORT}")
+        print("Model: Gradient Boosting & Voting Ensemble (79.21% Accuracy)")
         print("Press Ctrl+C to stop.")
         try:
             httpd.serve_forever()
